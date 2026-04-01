@@ -203,8 +203,26 @@ app.use((error: any, req: Request, res: Response, next: any) => {
 });
 
 // Start server
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`✅ Backend running on port ${port}`);
   console.log(`📍 API URL: http://localhost:${port}`);
   console.log(`🚀 Ready to accept requests`);
+});
+
+// Handle server errors
+server.on('error', (error: any) => {
+  console.error('Server error:', error);
+  process.exit(1);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error: any) => {
+  console.error('Uncaught exception:', error);
+  process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason: any) => {
+  console.error('Unhandled rejection:', reason);
+  process.exit(1);
 });
