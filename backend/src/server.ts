@@ -197,7 +197,7 @@ app.get('/api/dispatch/history', (req: Request, res: Response) => {
 });
 
 // Error handler
-app.use((error: any, req: Request, res: Response) => {
+app.use((error: any, req: Request, res: Response, next: any) => {
   console.error('Unhandled error:', error);
   res.status(500).json({ error: 'Internal server error' });
 });
