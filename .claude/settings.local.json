@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(\"C:\\\\Users\\\\CP MARKETING\\\\Downloads\\\\SISTEMA:*)"
+      "Bash(\"C:\\\\Users\\\\CP MARKETING\\\\Downloads\\\\SISTEMA:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)"
     ]
   }
 }
