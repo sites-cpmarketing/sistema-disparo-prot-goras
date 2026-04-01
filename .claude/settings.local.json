@@ -3,7 +3,9 @@
     "allow": [
       "Bash(\"C:\\\\Users\\\\CP MARKETING\\\\Downloads\\\\SISTEMA:*)",
       "Bash(npm install:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(curl -s --max-time 10 \"https://sistemas-disparo-facilitado-ghl.8czdzc.easypanel.host/health\")",
+      "Bash(\"C:/Users/CP MARKETING/Downloads/SISTEMA:*)"
     ]
   }
 }
