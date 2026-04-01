@@ -1,72 +1,39 @@
-// API Response Types
 export interface Contact {
   id: string;
-  firstName: string;
-  lastName: string;
-  email?: string;
+  name: string;
   phone: string;
-  customFields?: Record<string, string>;
+  email?: string;
 }
 
-export interface ContactList {
+export interface List {
   id: string;
   name: string;
-  description?: string;
-  memberCount: number;
+  contactCount?: number;
 }
 
 export interface WhatsAppTemplate {
   id: string;
   name: string;
   status: string;
-  category: string;
-  language: string;
-  variables?: string[];
+  category?: string;
+  language?: string;
 }
 
 export interface DispatchRequest {
-  recipients: string[]; // contact IDs
   templateId: string;
-  templateName: string;
-  variables: Record<string, string>;
-  listId?: string;
+  variables?: Record<string, string>;
+  recipients: string[];
 }
 
 export interface DispatchJob {
   id: string;
-  status: 'pending' | 'sending' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed';
   templateId: string;
-  templateName: string;
-  recipientCount: number;
+  recipients: string[];
+  variables?: Record<string, string>;
   sentCount: number;
   failedCount: number;
-  variables: Record<string, string>;
   createdAt: Date;
-  updatedAt: Date;
-  results: DispatchResult[];
-}
-
-export interface DispatchResult {
-  contactId: string;
-  phone: string;
-  status: 'sent' | 'failed';
-  message?: string;
-  sentAt?: Date;
-}
-
-export interface GHLContactsResponse {
-  contacts: Contact[];
-  pagination?: {
-    total: number;
-    page: number;
-    pageSize: number;
-  };
-}
-
-export interface GHLListsResponse {
-  lists: ContactList[];
-}
-
-export interface GHLTemplatesResponse {
-  templates: WhatsAppTemplate[];
+  completedAt?: Date;
+  errors?: Array<{ phone: string; error: string }>;
 }

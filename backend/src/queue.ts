@@ -1,18 +1,16 @@
-import { DispatchJob, DispatchRequest, DispatchResult } from './types.js';
 import { GHLClient } from './ghl-client.js';
-
-const RATE_LIMIT = 80; // messages per second
-const BATCH_SIZE = 10; // process 10 messages at a time
-const BATCH_DELAY = (BATCH_SIZE / RATE_LIMIT) * 1000; // delay between batches
+import { DispatchRequest, DispatchJob } from './types.js';
 
 export class DispatchQueue {
+  private queue: DispatchRequest[] = [];
   private jobs: Map<string, DispatchJob> = new Map();
-  private queue: string[] = [];
-  private processing = false;
   private ghlClient: GHLClient;
+  private processing = false;
+  private rateLimitDelay = 100; // 100ms between messages
 
   constructor(ghlClient: GHLClient) {
     this.ghlClient = ghlClient;
+    this.startProcessing();
   }
 
   async enqueue(request: DispatchRequest): Promise<string> {
@@ -22,115 +20,89 @@ export class DispatchQueue {
       id: jobId,
       status: 'pending',
       templateId: request.templateId,
-      templateName: request.templateName,
-      recipientCount: request.recipients.length,
+      recipients: request.recipients,
+      variables: request.variables,
       sentCount: 0,
       failedCount: 0,
-      variables: request.variables,
       createdAt: new Date(),
-      updatedAt: new Date(),
-      results: [],
+      errors: [],
     };
 
     this.jobs.set(jobId, job);
-    this.queue.push(jobId);
-
-    // Start processing if not already running
-    if (!this.processing) {
-      this.processQueue();
-    }
+    this.queue.push({ ...request, templateId: jobId } as any);
 
     return jobId;
   }
 
-  private async processQueue(): Promise<void> {
-    if (this.processing) return;
+  private startProcessing(): void {
+    setInterval(async () => {
+      if (!this.processing && this.queue.length > 0) {
+        await this.processNext();
+      }
+    }, 1000);
+  }
+
+  private async processNext(): Promise<void> {
+    if (this.queue.length === 0) return;
+
     this.processing = true;
+    const request = this.queue.shift();
 
-    while (this.queue.length > 0) {
-      const jobId = this.queue[0];
-      const job = this.jobs.get(jobId);
+    if (!request) {
+      this.processing = false;
+      return;
+    }
 
-      if (!job) {
-        this.queue.shift();
-        continue;
+    const jobId = request.templateId;
+    const job = this.jobs.get(jobId);
+
+    if (job) {
+      job.status = 'processing';
+
+      for (const recipient of request.recipients) {
+        try {
+          const success = await this.ghlClient.sendWhatsAppMessage(
+            recipient,
+            job.templateId,
+            request.variables
+          );
+
+          if (success) {
+            job.sentCount++;
+          } else {
+            job.failedCount++;
+            job.errors?.push({
+              phone: recipient,
+              error: 'Failed to send message',
+            });
+          }
+
+          // Rate limiting
+          await new Promise((resolve) =>
+            setTimeout(resolve, this.rateLimitDelay)
+          );
+        } catch (error) {
+          job.failedCount++;
+          job.errors?.push({
+            phone: recipient,
+            error: String(error),
+          });
+        }
       }
 
-      job.status = 'sending';
-      job.updatedAt = new Date();
-
-      try {
-        await this.processJob(job);
-        job.status = 'completed';
-      } catch (error) {
-        console.error(`Error processing job ${jobId}:`, error);
-        job.status = 'failed';
-      }
-
-      job.updatedAt = new Date();
-      this.queue.shift();
+      job.status = 'completed';
+      job.completedAt = new Date();
     }
 
     this.processing = false;
-  }
-
-  private async processJob(job: DispatchJob): Promise<void> {
-    const contacts = job.results; // reuse the results array
-    const totalContacts = job.recipientCount;
-
-    // Process in batches to respect rate limit
-    for (let i = 0; i < totalContacts; i += BATCH_SIZE) {
-      const batch = contacts.slice(i, i + BATCH_SIZE);
-
-      await Promise.all(
-        batch.map(async (result: DispatchResult) => {
-          try {
-            const response = await this.ghlClient.sendWhatsAppMessage(
-              result.phone,
-              job.templateId,
-              job.variables
-            );
-
-            result.status = 'sent';
-            result.sentAt = new Date();
-            job.sentCount++;
-          } catch (error) {
-            result.status = 'failed';
-            result.message = String(error instanceof Error ? error.message : 'Unknown error');
-            job.failedCount++;
-          }
-        })
-      );
-
-      // Respect rate limit
-      if (i + BATCH_SIZE < totalContacts) {
-        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
-      }
-    }
   }
 
   getJob(jobId: string): DispatchJob | undefined {
     return this.jobs.get(jobId);
   }
 
-  getAllJobs(): DispatchJob[] {
-    return Array.from(this.jobs.values()).sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-    );
-  }
-
   getHistory(limit: number = 50): DispatchJob[] {
-    return this.getAllJobs().slice(0, limit);
-  }
-
-  clearOldJobs(hoursOld: number = 24): void {
-    const now = Date.now();
-    const oldJobsThreshold = hoursOld * 60 * 60 * 1000;
-
-    for (const [jobId, job] of this.jobs.entries()) {
-      if (now - job.createdAt.getTime() > oldJobsThreshold) {
-        this.jobs.delete(jobId);
-      }
-    }
+    const allJobs = Array.from(this.jobs.values());
+    return allJobs.slice(-limit).reverse();
   }
 }

@@ -1,84 +1,66 @@
-import axios, { AxiosInstance } from 'axios';
-import { Contact, ContactList, WhatsAppTemplate, GHLContactsResponse, GHLListsResponse, GHLTemplatesResponse } from './types.js';
-
-const GHL_BASE_URL = 'https://rest.gohighlevel.com/v1';
-const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
-
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-}
+import axios from 'axios';
+import { Contact, List, WhatsAppTemplate } from './types.js';
 
 export class GHLClient {
-  private client: AxiosInstance;
   private apiKey: string;
   private locationId: string;
-  private cache: Map<string, CacheEntry<any>> = new Map();
+  private baseURL = 'https://rest.gohighlevel.com/v1';
+  private contactsCache: Map<string, Contact[]> = new Map();
+  private cacheExpiry = 30 * 60 * 1000; // 30 minutes
 
   constructor(apiKey: string, locationId: string) {
     this.apiKey = apiKey;
     this.locationId = locationId;
-    this.client = axios.create({
-      baseURL: GHL_BASE_URL,
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-  }
-
-  private getCacheKey(method: string, params?: any): string {
-    return `${method}:${JSON.stringify(params || {})}`;
-  }
-
-  private getFromCache<T>(key: string): T | null {
-    const entry = this.cache.get(key) as CacheEntry<T> | undefined;
-    if (!entry) return null;
-
-    const now = Date.now();
-    if (now - entry.timestamp > CACHE_TTL) {
-      this.cache.delete(key);
-      return null;
-    }
-
-    return entry.data;
-  }
-
-  private setCache<T>(key: string, data: T): void {
-    this.cache.set(key, { data, timestamp: Date.now() });
   }
 
   async validateApiKey(): Promise<boolean> {
     try {
-      const response = await this.client.get(`/locations/${this.locationId}`);
+      const response = await axios.get(
+        `${this.baseURL}/locations/${this.locationId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
       return response.status === 200;
     } catch (error) {
-      console.error('GHL API validation failed:', error);
+      console.error('Error validating API key:', error);
       return false;
     }
   }
 
   async getContacts(search?: string): Promise<Contact[]> {
     try {
-      const cacheKey = this.getCacheKey('getContacts', { search });
-      const cached = this.getFromCache<Contact[]>(cacheKey);
-      if (cached) return cached;
-
-      const params = new URLSearchParams({
-        locationId: this.locationId,
-        limit: '100',
-      });
-
-      if (search) {
-        params.append('search', search);
+      // Check cache
+      const cacheKey = `contacts_${search || 'all'}`;
+      const cached = this.contactsCache.get(cacheKey);
+      if (cached) {
+        return cached;
       }
 
-      const response = await this.client.get<GHLContactsResponse>(
-        `/contacts?${params.toString()}`
-      );
+      const params: any = {
+        locationId: this.locationId,
+      };
+      if (search) {
+        params.query = search;
+      }
+
+      const response = await axios.get(`${this.baseURL}/contacts/`, {
+        params,
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
       const contacts = response.data.contacts || [];
-      this.setCache(cacheKey, contacts);
+      this.contactsCache.set(cacheKey, contacts);
+
+      // Clear cache after 30 minutes
+      setTimeout(() => this.contactsCache.delete(cacheKey), this.cacheExpiry);
+
       return contacts;
     } catch (error) {
       console.error('Error fetching contacts:', error);
@@ -86,68 +68,55 @@ export class GHLClient {
     }
   }
 
-  async getContactsByList(listId: string): Promise<Contact[]> {
+  async getLists(): Promise<List[]> {
     try {
-      const cacheKey = this.getCacheKey('getContactsByList', { listId });
-      const cached = this.getFromCache<Contact[]>(cacheKey);
-      if (cached) return cached;
+      const response = await axios.get(`${this.baseURL}/lists/`, {
+        params: { locationId: this.locationId },
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-      const response = await this.client.get<GHLContactsResponse>(
-        `/contacts/lists/${listId}/contacts`,
-        {
-          params: {
-            locationId: this.locationId,
-            limit: '100',
-          },
-        }
-      );
-
-      const contacts = response.data.contacts || [];
-      this.setCache(cacheKey, contacts);
-      return contacts;
-    } catch (error) {
-      console.error('Error fetching contacts by list:', error);
-      throw error;
-    }
-  }
-
-  async getLists(): Promise<ContactList[]> {
-    try {
-      const cacheKey = this.getCacheKey('getLists');
-      const cached = this.getFromCache<ContactList[]>(cacheKey);
-      if (cached) return cached;
-
-      const response = await this.client.get<GHLListsResponse>(
-        `/contacts/lists`,
-        {
-          params: {
-            locationId: this.locationId,
-          },
-        }
-      );
-
-      const lists = response.data.lists || [];
-      this.setCache(cacheKey, lists);
-      return lists;
+      return response.data.lists || [];
     } catch (error) {
       console.error('Error fetching lists:', error);
       throw error;
     }
   }
 
-  async getWhatsAppTemplates(): Promise<WhatsAppTemplate[]> {
+  async getContactsByList(listId: string): Promise<Contact[]> {
     try {
-      const cacheKey = this.getCacheKey('getWhatsAppTemplates');
-      const cached = this.getFromCache<WhatsAppTemplate[]>(cacheKey);
-      if (cached) return cached;
-
-      const response = await this.client.get<GHLTemplatesResponse>(
-        `/locations/${this.locationId}/whatsapp/templates`
+      const response = await axios.get(
+        `${this.baseURL}/lists/${listId}/contacts`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
       );
 
-      const templates = response.data.templates || [];
-      this.setCache(cacheKey, templates);
-      return templates;
+      return response.data.contacts || [];
+    } catch (error) {
+      console.error('Error fetching contacts by list:', error);
+      throw error;
+    }
+  }
+
+  async getWhatsAppTemplates(): Promise<WhatsAppTemplate[]> {
+    try {
+      const response = await axios.get(
+        `${this.baseURL}/locations/${this.locationId}/whatsapp/templates`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      return response.data.templates || [];
     } catch (error) {
       console.error('Error fetching WhatsApp templates:', error);
       throw error;
@@ -155,31 +124,30 @@ export class GHLClient {
   }
 
   async sendWhatsAppMessage(
-    phoneNumber: string,
+    to: string,
     templateId: string,
-    variables: Record<string, string>
-  ): Promise<{ messageId: string; status: string }> {
+    variables?: Record<string, string>
+  ): Promise<boolean> {
     try {
-      const response = await this.client.post(
-        `/locations/${this.locationId}/whatsapp/send`,
+      const response = await axios.post(
+        `${this.baseURL}/locations/${this.locationId}/whatsapp/send`,
         {
-          phoneNumber,
+          phoneNumber: to,
           templateId,
           variables,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
         }
       );
 
-      return {
-        messageId: response.data.messageId || response.data.id,
-        status: response.data.status || 'sent',
-      };
+      return response.status === 200;
     } catch (error) {
-      console.error('Error sending WhatsApp message:', error);
-      throw error;
+      console.error(`Error sending WhatsApp message to ${to}:`, error);
+      return false;
     }
-  }
-
-  clearCache(): void {
-    this.cache.clear();
   }
 }
