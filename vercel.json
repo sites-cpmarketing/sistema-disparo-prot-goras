@@ -27,7 +27,6 @@
     }
   ],
   "env": {
-    "BACKEND_PORT": "3000",
-    "FRONTEND_URL": "@frontend_url"
+    "BACKEND_PORT": "3000"
   }
 }
