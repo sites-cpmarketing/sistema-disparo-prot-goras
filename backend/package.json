@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Backend para ferramenta de disparo WhatsApp no GHL",
   "main": "dist/server.js",
-  "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
