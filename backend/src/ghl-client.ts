@@ -92,25 +92,9 @@ export class GHLClient {
   }
 
   async getWhatsAppTemplates(): Promise<WhatsAppTemplate[]> {
-    try {
-      const response = await this.http.get('/conversations/messages/templates', {
-        params: { locationId: this.locationId },
-      });
-      const raw = response.data.templates || response.data?.data || [];
-      return Array.isArray(raw)
-        ? raw.map((t: any) => ({
-            id: t.id || t.name,
-            name: t.name,
-            category: t.category || 'MARKETING',
-            status: t.status || 'APPROVED',
-            language: t.language || 'pt_BR',
-            variables: t.variables || extractVariables(t.body || ''),
-          }))
-        : [];
-    } catch (error) {
-      console.error('Error fetching WhatsApp templates (returning empty):', error);
-      return [];
-    }
+    // GHL v2 does not expose WhatsApp templates via REST API.
+    // Templates are managed directly in the app (custom templates).
+    return [];
   }
 
   async sendWhatsAppMessage(
