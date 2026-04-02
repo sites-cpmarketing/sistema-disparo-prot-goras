@@ -87,41 +87,65 @@ class GHLClient {
         }
     }
     async getWhatsAppTemplates() {
+        // Step 1: fetch location details to find WhatsApp integration IDs
+        let locationData = {};
         try {
-            // Step 1: fetch ALL templates (no type filter) to see what exists
-            const responseAll = await this.http.get(`/locations/${this.locationId}/templates`, {
-                params: { originId: this.locationId, limit: '100', skip: '0' },
-            });
-            console.log('[templates] RAW response (all types):', JSON.stringify(responseAll.data).substring(0, 2000));
-            const all = responseAll.data.templates || responseAll.data?.data || [];
-            console.log(`[templates] Total templates found: ${Array.isArray(all) ? all.length : 0}`);
-            if (Array.isArray(all) && all.length > 0) {
-                console.log('[templates] Types found:', [...new Set(all.map((t) => t.type || t.templateType || 'unknown'))]);
+            const locResp = await this.http.get(`/locations/${this.locationId}`);
+            locationData = locResp.data?.location || locResp.data || {};
+            console.log('[templates] Location keys:', Object.keys(locationData));
+            console.log('[templates] Location social:', JSON.stringify(locationData.social || locationData.integrations || locationData.settings).substring(0, 500));
+        }
+        catch (e) {
+            console.error('[templates] Could not fetch location:', e?.response?.status);
+        }
+        // Step 2: try templates with different originId candidates
+        const originCandidates = [
+            undefined, // no originId
+            this.locationId, // locationId itself
+            locationData.companyId, // company ID
+            locationData.id, // location.id
+        ].filter(Boolean);
+        const uniqueCandidates = [...new Set(originCandidates)];
+        for (const originId of uniqueCandidates) {
+            const params = { limit: '100', skip: '0' };
+            if (originId)
+                params.originId = originId;
+            try {
+                const r = await this.http.get(`/locations/${this.locationId}/templates`, { params });
+                const raw = r.data?.templates || r.data?.data || [];
+                console.log(`[templates] originId=${originId} → totalCount=${r.data?.totalCount}, found=${raw.length}`);
+                if (Array.isArray(raw) && raw.length > 0) {
+                    console.log('[templates] SUCCESS! Sample:', JSON.stringify(raw[0]).substring(0, 300));
+                    return raw.map((t) => ({
+                        id: t.id || t.name,
+                        name: t.name,
+                        category: t.category || 'MARKETING',
+                        status: t.status || 'APPROVED',
+                        language: t.language || 'pt_BR',
+                        variables: t.variables || extractVariables(t.body || t.template?.body || ''),
+                        body: t.body || t.template?.body || t.message || '',
+                    }));
+                }
             }
-            // Step 2: filter whatsapp templates
-            const whatsapp = Array.isArray(all)
-                ? all.filter((t) => {
-                    const type = (t.type || t.templateType || '').toLowerCase();
-                    return type === 'whatsapp' || type === 'whats_app' || type === '';
-                })
-                : [];
-            console.log(`[templates] WhatsApp templates after filter: ${whatsapp.length}`);
-            return whatsapp.map((t) => ({
-                id: t.id || t.name,
-                name: t.name,
-                category: t.category || 'MARKETING',
-                status: t.status || 'APPROVED',
-                language: t.language || 'pt_BR',
-                variables: t.variables || extractVariables(t.body || t.template?.body || ''),
-                body: t.body || t.template?.body || t.message || '',
-            }));
+            catch (e) {
+                console.error(`[templates] originId=${originId} error:`, e?.response?.status, JSON.stringify(e?.response?.data));
+            }
         }
-        catch (error) {
-            const status = error?.response?.status;
-            const data = error?.response?.data;
-            console.error(`[templates] Error ${status}:`, JSON.stringify(data));
-            return [];
+        // Step 3: try completely different endpoints
+        const altEndpoints = [
+            `/conversations/templates?locationId=${this.locationId}`,
+            `/locations/${this.locationId}/whatsapp/templates`,
+        ];
+        for (const url of altEndpoints) {
+            try {
+                const r = await this.http.get(url);
+                console.log(`[templates] ${url} → status 200, data:`, JSON.stringify(r.data).substring(0, 300));
+            }
+            catch (e) {
+                console.error(`[templates] ${url} → error:`, e?.response?.status);
+            }
         }
+        return [];
     }
     async sendWhatsAppMessage(contactId, templateId, variables) {
         try {
