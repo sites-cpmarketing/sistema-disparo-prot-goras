@@ -87,9 +87,42 @@ class GHLClient {
         }
     }
     async getWhatsAppTemplates() {
-        // GHL v2 does not expose WhatsApp templates via REST API.
-        // Templates are managed directly in the app (custom templates).
-        return [];
+        try {
+            // Correct GHL v2 endpoint: GET /locations/{locationId}/templates
+            // Requires scope: locations/templates.readonly
+            // originId is required and must equal locationId
+            const response = await this.http.get(`/locations/${this.locationId}/templates`, {
+                params: {
+                    originId: this.locationId,
+                    type: 'whatsapp',
+                    limit: '100',
+                    skip: '0',
+                },
+            });
+            const raw = response.data.templates || response.data?.data || [];
+            return Array.isArray(raw)
+                ? raw.map((t) => ({
+                    id: t.id || t.name,
+                    name: t.name,
+                    category: t.category || 'MARKETING',
+                    status: t.status || 'APPROVED',
+                    language: t.language || 'pt_BR',
+                    variables: t.variables || extractVariables(t.body || t.template?.body || ''),
+                    body: t.body || t.template?.body || '',
+                }))
+                : [];
+        }
+        catch (error) {
+            const status = error?.response?.status;
+            const msg = error?.response?.data?.message || error?.message;
+            if (status === 401) {
+                console.warn('[templates] 401 – add scope "locations/templates.readonly" to your PIT token in GHL.');
+            }
+            else {
+                console.error(`[templates] Error (${status}): ${msg}`);
+            }
+            return [];
+        }
     }
     async sendWhatsAppMessage(contactId, templateId, variables) {
         try {
