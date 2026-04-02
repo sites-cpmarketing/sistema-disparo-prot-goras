@@ -12,8 +12,10 @@ const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.json());
+
+const allowedOrigin = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: allowedOrigin || '*',
   credentials: true,
 }));
 
