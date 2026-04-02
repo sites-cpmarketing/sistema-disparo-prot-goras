@@ -23,6 +23,16 @@ app.use(cors({
 let ghlClient: GHLClient | null = null;
 let dispatchQueue: DispatchQueue | null = null;
 
+// Custom templates (in-memory storage)
+interface CustomTemplate {
+  id: string;
+  name: string;
+  body: string;
+  variables: string[];
+  createdAt: string;
+}
+let customTemplates: CustomTemplate[] = [];
+
 // Routes
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok' });
@@ -100,19 +110,65 @@ app.get('/api/lists/:listId/contacts', async (req: Request, res: Response) => {
   }
 });
 
-// WhatsApp Templates Routes
+// WhatsApp Templates Routes — merges GHL templates with custom templates
 app.get('/api/whatsapp/templates', async (req: Request, res: Response) => {
   try {
-    if (!ghlClient) {
-      return res.status(401).json({ error: 'Not authenticated' });
+    let ghlTemplates: any[] = [];
+    if (ghlClient) {
+      ghlTemplates = await ghlClient.getWhatsAppTemplates();
     }
 
-    const templates = await ghlClient.getWhatsAppTemplates();
-    res.json({ templates });
+    // Custom templates formatted as WhatsAppTemplate
+    const custom = customTemplates.map((t) => ({
+      id: t.id,
+      name: t.name,
+      category: 'CUSTOM',
+      status: 'APPROVED',
+      language: 'pt_BR',
+      variables: t.variables,
+      body: t.body,
+      isCustom: true,
+    }));
+
+    res.json({ templates: [...ghlTemplates, ...custom] });
   } catch (error) {
     console.error('Error fetching templates:', error);
     res.status(500).json({ error: 'Failed to fetch templates' });
   }
+});
+
+// Custom Templates CRUD
+app.get('/api/custom-templates', (req: Request, res: Response) => {
+  res.json({ templates: customTemplates });
+});
+
+app.post('/api/custom-templates', (req: Request, res: Response) => {
+  const { name, body } = req.body;
+  if (!name || !body) {
+    return res.status(400).json({ error: 'name and body are required' });
+  }
+  const variables = (body.match(/\{\{(\w+)\}\}/g) || []).map((m: string) =>
+    m.replace(/\{\{|\}\}/g, '')
+  );
+  const template: CustomTemplate = {
+    id: `custom_${Date.now()}`,
+    name,
+    body,
+    variables: [...new Set<string>(variables)],
+    createdAt: new Date().toISOString(),
+  };
+  customTemplates.push(template);
+  res.status(201).json(template);
+});
+
+app.delete('/api/custom-templates/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const before = customTemplates.length;
+  customTemplates = customTemplates.filter((t) => t.id !== id);
+  if (customTemplates.length === before) {
+    return res.status(404).json({ error: 'Template not found' });
+  }
+  res.json({ success: true });
 });
 
 // Dispatch Routes

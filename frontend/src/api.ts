@@ -45,6 +45,21 @@ export const apiClient = {
     return response.data;
   },
 
+  // Custom Templates
+  getCustomTemplates: async (): Promise<{ templates: any[] }> => {
+    const response = await client.get('/custom-templates');
+    return response.data;
+  },
+
+  createCustomTemplate: async (name: string, body: string): Promise<any> => {
+    const response = await client.post('/custom-templates', { name, body });
+    return response.data;
+  },
+
+  deleteCustomTemplate: async (id: string): Promise<void> => {
+    await client.delete(`/custom-templates/${id}`);
+  },
+
   // Dispatch
   previewDispatch: async (
     templateId: string,

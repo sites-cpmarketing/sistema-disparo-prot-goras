@@ -46,6 +46,7 @@ class GHLClient {
                 email: c.email || '',
                 phone: c.phone || '',
                 locationId: c.locationId,
+                tags: c.tags || [],
             }));
         }
         catch (error) {
@@ -53,51 +54,40 @@ class GHLClient {
             throw error;
         }
     }
+    // Uses GHL contact tags as "lists" — each unique tag is a list
     async getLists() {
         try {
-            // GHL v2: smart lists are called "contact smart lists"
-            const response = await this.http.get('/contacts/smart-lists/', {
-                params: { locationId: this.locationId },
+            const contacts = await this.getContacts();
+            const tagMap = new Map();
+            contacts.forEach((c) => {
+                (c.tags || []).forEach((tag) => {
+                    tagMap.set(tag, (tagMap.get(tag) || 0) + 1);
+                });
             });
-            return (response.data.smartLists || response.data.lists || []).map((l) => ({
-                id: l.id,
-                name: l.name,
-                memberCount: l.count ?? l.memberCount ?? 0,
+            return Array.from(tagMap.entries()).map(([name, count]) => ({
+                id: name,
+                name,
+                contactCount: count,
             }));
         }
         catch (error) {
-            console.error('Error fetching lists (returning empty):', error);
-            // Smart lists may not be available on all plans — return empty instead of crashing
+            console.error('Error fetching tags as lists:', error);
             return [];
         }
     }
-    async getContactsByList(listId) {
+    // Returns contacts that have the given tag
+    async getContactsByList(tag) {
         try {
-            const response = await this.http.get('/contacts/', {
-                params: {
-                    locationId: this.locationId,
-                    smartListId: listId,
-                    limit: '100',
-                },
-            });
-            const raw = response.data.contacts || [];
-            return raw.map((c) => ({
-                id: c.id,
-                firstName: c.firstName || '',
-                lastName: c.lastName || '',
-                email: c.email || '',
-                phone: c.phone || '',
-                locationId: c.locationId,
-            }));
+            const contacts = await this.getContacts();
+            return contacts.filter((c) => (c.tags || []).includes(tag));
         }
         catch (error) {
-            console.error('Error fetching contacts by list:', error);
+            console.error('Error fetching contacts by tag:', error);
             throw error;
         }
     }
     async getWhatsAppTemplates() {
         try {
-            // GHL v2: WhatsApp templates via conversations messages templates
             const response = await this.http.get('/conversations/messages/templates', {
                 params: { locationId: this.locationId },
             });
@@ -114,8 +104,7 @@ class GHLClient {
                 : [];
         }
         catch (error) {
-            console.error('Error fetching WhatsApp templates:', error);
-            // Return empty instead of crashing — templates may not be configured
+            console.error('Error fetching WhatsApp templates (returning empty):', error);
             return [];
         }
     }
@@ -131,13 +120,12 @@ class GHLClient {
             return response.status === 200 || response.status === 201;
         }
         catch (error) {
-            console.error(`Error sending WhatsApp message to contact ${contactId}:`, error);
+            console.error(`Error sending WhatsApp to contact ${contactId}:`, error);
             return false;
         }
     }
 }
 exports.GHLClient = GHLClient;
-// Extract {{variable}} placeholders from template body
 function extractVariables(body) {
     const matches = body.match(/\{\{(\w+)\}\}/g) || [];
     return [...new Set(matches.map((m) => m.replace(/\{\{|\}\}/g, '')))];
