@@ -88,39 +88,38 @@ class GHLClient {
     }
     async getWhatsAppTemplates() {
         try {
-            // Correct GHL v2 endpoint: GET /locations/{locationId}/templates
-            // Requires scope: locations/templates.readonly
-            // originId is required and must equal locationId
-            const response = await this.http.get(`/locations/${this.locationId}/templates`, {
-                params: {
-                    originId: this.locationId,
-                    type: 'whatsapp',
-                    limit: '100',
-                    skip: '0',
-                },
+            // Step 1: fetch ALL templates (no type filter) to see what exists
+            const responseAll = await this.http.get(`/locations/${this.locationId}/templates`, {
+                params: { originId: this.locationId, limit: '100', skip: '0' },
             });
-            const raw = response.data.templates || response.data?.data || [];
-            return Array.isArray(raw)
-                ? raw.map((t) => ({
-                    id: t.id || t.name,
-                    name: t.name,
-                    category: t.category || 'MARKETING',
-                    status: t.status || 'APPROVED',
-                    language: t.language || 'pt_BR',
-                    variables: t.variables || extractVariables(t.body || t.template?.body || ''),
-                    body: t.body || t.template?.body || '',
-                }))
+            console.log('[templates] RAW response (all types):', JSON.stringify(responseAll.data).substring(0, 2000));
+            const all = responseAll.data.templates || responseAll.data?.data || [];
+            console.log(`[templates] Total templates found: ${Array.isArray(all) ? all.length : 0}`);
+            if (Array.isArray(all) && all.length > 0) {
+                console.log('[templates] Types found:', [...new Set(all.map((t) => t.type || t.templateType || 'unknown'))]);
+            }
+            // Step 2: filter whatsapp templates
+            const whatsapp = Array.isArray(all)
+                ? all.filter((t) => {
+                    const type = (t.type || t.templateType || '').toLowerCase();
+                    return type === 'whatsapp' || type === 'whats_app' || type === '';
+                })
                 : [];
+            console.log(`[templates] WhatsApp templates after filter: ${whatsapp.length}`);
+            return whatsapp.map((t) => ({
+                id: t.id || t.name,
+                name: t.name,
+                category: t.category || 'MARKETING',
+                status: t.status || 'APPROVED',
+                language: t.language || 'pt_BR',
+                variables: t.variables || extractVariables(t.body || t.template?.body || ''),
+                body: t.body || t.template?.body || t.message || '',
+            }));
         }
         catch (error) {
             const status = error?.response?.status;
-            const msg = error?.response?.data?.message || error?.message;
-            if (status === 401) {
-                console.warn('[templates] 401 – add scope "locations/templates.readonly" to your PIT token in GHL.');
-            }
-            else {
-                console.error(`[templates] Error (${status}): ${msg}`);
-            }
+            const data = error?.response?.data;
+            console.error(`[templates] Error ${status}:`, JSON.stringify(data));
             return [];
         }
     }
