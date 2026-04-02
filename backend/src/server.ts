@@ -33,6 +33,15 @@ interface CustomTemplate {
 }
 let customTemplates: CustomTemplate[] = [];
 
+// Custom lists (in-memory storage)
+interface CustomList {
+  id: string;
+  name: string;
+  contactIds: string[];
+  createdAt: string;
+}
+let customLists: CustomList[] = [];
+
 // Routes
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok' });
@@ -80,34 +89,64 @@ app.get('/api/contacts', async (req: Request, res: Response) => {
   }
 });
 
-// Lists Routes
-app.get('/api/lists', async (req: Request, res: Response) => {
-  try {
-    if (!ghlClient) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const lists = await ghlClient.getLists();
-    res.json({ lists });
-  } catch (error) {
-    console.error('Error fetching lists:', error);
-    res.status(500).json({ error: 'Failed to fetch lists' });
-  }
+// Lists Routes — returns custom lists only
+app.get('/api/lists', (req: Request, res: Response) => {
+  const lists = customLists.map((l) => ({
+    id: l.id,
+    name: l.name,
+    memberCount: l.contactIds.length,
+  }));
+  res.json({ lists });
 });
 
 app.get('/api/lists/:listId/contacts', async (req: Request, res: Response) => {
   try {
+    const { listId } = req.params;
+    const list = customLists.find((l) => l.id === listId);
+    if (!list) {
+      return res.status(404).json({ error: 'List not found' });
+    }
     if (!ghlClient) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
-
-    const { listId } = req.params;
-    const contacts = await ghlClient.getContactsByList(listId);
+    // Fetch all contacts and filter by IDs in the list
+    const all = await ghlClient.getContacts();
+    const contacts = all.filter((c) => list.contactIds.includes(c.id));
     res.json({ contacts });
   } catch (error) {
     console.error('Error fetching contacts by list:', error);
     res.status(500).json({ error: 'Failed to fetch contacts' });
   }
+});
+
+// Custom Lists CRUD
+app.post('/api/custom-lists', (req: Request, res: Response) => {
+  const { name, contactIds } = req.body;
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  const list: CustomList = {
+    id: `list_${Date.now()}`,
+    name,
+    contactIds: contactIds || [],
+    createdAt: new Date().toISOString(),
+  };
+  customLists.push(list);
+  res.status(201).json(list);
+});
+
+app.put('/api/custom-lists/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const list = customLists.find((l) => l.id === id);
+  if (!list) return res.status(404).json({ error: 'List not found' });
+  if (req.body.name) list.name = req.body.name;
+  if (Array.isArray(req.body.contactIds)) list.contactIds = req.body.contactIds;
+  res.json(list);
+});
+
+app.delete('/api/custom-lists/:id', (req: Request, res: Response) => {
+  const before = customLists.length;
+  customLists = customLists.filter((l) => l.id !== req.params.id);
+  if (customLists.length === before) return res.status(404).json({ error: 'List not found' });
+  res.json({ success: true });
 });
 
 // WhatsApp Templates Routes — merges GHL templates with custom templates

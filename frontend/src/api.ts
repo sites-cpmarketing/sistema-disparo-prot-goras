@@ -60,6 +60,21 @@ export const apiClient = {
     await client.delete(`/custom-templates/${id}`);
   },
 
+  // Custom Lists
+  createCustomList: async (name: string, contactIds: string[]): Promise<any> => {
+    const response = await client.post('/custom-lists', { name, contactIds });
+    return response.data;
+  },
+
+  updateCustomList: async (id: string, name: string, contactIds: string[]): Promise<any> => {
+    const response = await client.put(`/custom-lists/${id}`, { name, contactIds });
+    return response.data;
+  },
+
+  deleteCustomList: async (id: string): Promise<void> => {
+    await client.delete(`/custom-lists/${id}`);
+  },
+
   // Dispatch
   previewDispatch: async (
     templateId: string,
