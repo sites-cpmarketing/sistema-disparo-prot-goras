@@ -32,29 +32,46 @@ function NewDispatch() {
   }, []);
 
   const loadData = async () => {
-    try {
-      setLoading(true);
-      const [contactsRes, listsRes, templatesRes] = await Promise.all([
-        apiClient.getContacts(),
-        apiClient.getLists(),
-        apiClient.getTemplates(),
-      ]);
+    setLoading(true);
+    const errors: string[] = [];
 
-      setContactsLocal(contactsRes.contacts);
-      setListsLocal(listsRes.lists);
-      setTemplatesLocal(templatesRes.templates);
+    const [contactsRes, listsRes, templatesRes] = await Promise.allSettled([
+      apiClient.getContacts(),
+      apiClient.getLists(),
+      apiClient.getTemplates(),
+    ]);
 
-      setContacts(contactsRes.contacts);
-      setLists(listsRes.lists);
-      setTemplates(templatesRes.templates);
-
-      setError('');
-    } catch (err) {
-      setError('Erro ao carregar dados. Verifique sua conexão com o GHL.');
-      console.error(err);
-    } finally {
-      setLoading(false);
+    if (contactsRes.status === 'fulfilled') {
+      setContactsLocal(contactsRes.value.contacts);
+      setContacts(contactsRes.value.contacts);
+    } else {
+      errors.push('contatos');
+      console.error('Contacts error:', contactsRes.reason);
     }
+
+    if (listsRes.status === 'fulfilled') {
+      setListsLocal(listsRes.value.lists);
+      setLists(listsRes.value.lists);
+    } else {
+      errors.push('listas');
+      console.error('Lists error:', listsRes.reason);
+    }
+
+    if (templatesRes.status === 'fulfilled') {
+      setTemplatesLocal(templatesRes.value.templates);
+      setTemplates(templatesRes.value.templates);
+    } else {
+      errors.push('templates');
+      console.error('Templates error:', templatesRes.reason);
+    }
+
+    if (errors.length > 0) {
+      setError(`Erro ao carregar: ${errors.join(', ')}. Verifique os escopos do token no GHL.`);
+    } else {
+      setError('');
+    }
+
+    setLoading(false);
   };
 
   const handleSelectList = async (list: ContactList) => {

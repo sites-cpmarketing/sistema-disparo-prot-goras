@@ -100,10 +100,11 @@ export class GHLClient {
 
   async getWhatsAppTemplates(): Promise<WhatsAppTemplate[]> {
     try {
-      const response = await this.http.get(
-        `/locations/${this.locationId}/whatsapp/templates`
-      );
-      const raw = response.data.templates || response.data || [];
+      // GHL v2: WhatsApp templates via conversations messages templates
+      const response = await this.http.get('/conversations/messages/templates', {
+        params: { locationId: this.locationId },
+      });
+      const raw = response.data.templates || response.data?.data || [];
       return Array.isArray(raw)
         ? raw.map((t: any) => ({
             id: t.id || t.name,
@@ -116,7 +117,8 @@ export class GHLClient {
         : [];
     } catch (error) {
       console.error('Error fetching WhatsApp templates:', error);
-      throw error;
+      // Return empty instead of crashing — templates may not be configured
+      return [];
     }
   }
 
